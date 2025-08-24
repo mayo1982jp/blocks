@@ -163,7 +163,7 @@
                 if (gameMode === 'solo') { PLAYER_NAMES.yellow = `AI L${level} (黄)`; PLAYER_NAMES.red = `AI L${level} (赤)`; PLAYER_NAMES.green = `AI L${level} (緑)`;}
                 modeSelectionScreen.style.display = 'none';
                 gameContainer.style.display = 'flex';
-                initGame();
+                setTimeout(initGame, 0);
             }
 
             function initGame() {
