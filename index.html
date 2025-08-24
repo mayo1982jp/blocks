@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ブロックス</title>
     <style>
-        body{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;display:flex;justify-content:center;align-items:center;padding:10px;background-color:#f0f0f0;user-select:none; min-height: 100vh; margin: 0; box-sizing: border-box;}
+        body{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;display:flex;justify-content:center;align-items:center;padding:10px;background-color:#f0f0f0;user-select:none; min-height: 10vh; margin: 0; box-sizing: border-box;}
         
         #mode-selection { display: flex; flex-direction: column; gap: 20px; padding: 40px; background-color: #fff; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); text-align: center; }
         #mode-selection h1 { margin: 0 0 10px 0; }
@@ -152,6 +152,18 @@
             
             const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 
+            let lastMouseX = 0; // マウスの最新のX座標を保持
+            let lastMouseY = 0; // マウスの最新のY座標を保持
+
+            // グローバルなマウス移動リスナー
+            if (!isTouchDevice) {
+                document.addEventListener('mousemove', (e) => {
+                    lastMouseX = e.clientX;
+                    lastMouseY = e.clientY;
+                    handleGlobalMouseMove(e);
+                });
+            }
+
             document.getElementById('solo-lvl1-btn').addEventListener('click', () => startGame('solo', 1));
             document.getElementById('solo-lvl2-btn').addEventListener('click', () => startGame('solo', 2));
             document.getElementById('multiplayer-btn').addEventListener('click', () => startGame('multiplayer', 0));
@@ -213,11 +225,7 @@
             
             function createBoard() { 
                 for (let i = 0; i < BOARD_SIZE * BOARD_SIZE; i++) { const cell = document.createElement('div'); cell.classList.add('grid-cell'); cell.dataset.x = i % BOARD_SIZE; cell.dataset.y = Math.floor(i / BOARD_SIZE); cell.addEventListener('click', onBoardClick); boardContainer.appendChild(cell); } 
-                if (!isTouchDevice) { 
-                    boardContainer.addEventListener('mousemove', handleBoardMouseMove);
-                    boardContainer.addEventListener('mouseleave', () => { if (piecePreviewContainer) piecePreviewContainer.style.display = 'none'; });
-                    boardContainer.addEventListener('mouseenter', () => { if (selectedPieceData) piecePreviewContainer.style.display = 'grid'; });
-                }
+                // 以前のboardContainerに対するマウスイベントリスナーは削除
             }
             
             function createPieceElement(pieceData) {
@@ -232,7 +240,10 @@
                     selectedPieceData = allPlayerPieces[color][id];
                     pieceAnchor = pieceAnchorForShape(selectedPieceData.shape);
                     updatePreviewPiece();
-                    if (!isTouchDevice) piecePreviewContainer.style.display = 'grid';
+                    if (!isTouchDevice) {
+                        // ピース選択時にプレビューを即座に更新
+                        handleGlobalMouseMove({ clientX: lastMouseX, clientY: lastMouseY });
+                    }
                 });
                 if (!isTouchDevice) {
                     pieceEl.addEventListener('contextmenu', e => { e.preventDefault(); onRotate(); });
@@ -246,12 +257,55 @@
                 redrawPiece(selectedPieceData.element, selectedPieceData.shape, selectedPieceData.color);
                 pieceAnchor = pieceAnchorForShape(selectedPieceData.shape);
                 updatePreviewPiece();
+                if (!isTouchDevice) {
+                    // 回転時にもプレビューを即座に更新
+                    handleGlobalMouseMove({ clientX: lastMouseX, clientY: lastMouseY });
+                }
             }
             
             function redrawPiece(targetEl, shape, color) { const isPreview = targetEl.id === 'piece-preview'; const pieceCellSize = isPreview ? cellWidth : (window.innerWidth <= 768 ? 12 : 15); targetEl.innerHTML = ''; const rows = shape.length, cols = shape[0].length; targetEl.style.gridTemplateRows = `repeat(${rows}, ${pieceCellSize}px)`; targetEl.style.gridTemplateColumns = `repeat(${cols}, ${pieceCellSize}px)`; for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) { const cell = document.createElement('div'); cell.classList.add('piece-cell'); if (shape[y][x] === 1) cell.classList.add(`color-${color}`); else if (!isPreview) cell.classList.add('empty'); targetEl.appendChild(cell); } }
             function rotateMatrix(matrix) { const rows = matrix.length, cols = matrix[0].length; const newMatrix = Array.from({ length: cols }, () => Array(rows).fill(0)); for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) newMatrix[x][rows - 1 - y] = matrix[y][x]; return newMatrix; }
             
-            function handleBoardMouseMove(e) { if (!selectedPieceData) return; const rect = boardContainer.getBoundingClientRect(); const mouseX = e.clientX - rect.left; const mouseY = e.clientY - rect.top; const gridX = Math.floor(mouseX / cellWidth); const gridY = Math.floor(mouseY / cellHeight); const startX = gridX - pieceAnchor.x; const startY = gridY - pieceAnchor.y; const previewX = startX * cellWidth; const previewY = startY * cellHeight; piecePreviewContainer.style.transform = `translate(${previewX}px, ${previewY}px)`; const isValid = isValidPlacement(startX, startY, selectedPieceData); piecePreviewContainer.classList.toggle('invalid-placement', !isValid); }
+            // グローバルなマウス移動ハンドラ
+            function handleGlobalMouseMove(e) {
+                if (!selectedPieceData) {
+                    if (piecePreviewContainer) piecePreviewContainer.style.display = 'none';
+                    return;
+                }
+
+                const boardRect = boardContainer.getBoundingClientRect();
+                const mouseX = e.clientX;
+                const mouseY = e.clientY;
+
+                // マウスがボード上にあるかチェック
+                const isMouseOverBoard = mouseX >= boardRect.left && mouseX < boardRect.right &&
+                                         mouseY >= boardRect.top && mouseY < boardRect.bottom;
+
+                if (isMouseOverBoard) {
+                    piecePreviewContainer.style.display = 'grid';
+                    // ボードの左上を基準としたマウス座標
+                    const relativeMouseX = mouseX - boardRect.left;
+                    const relativeMouseY = mouseY - boardRect.top;
+
+                    const gridX = Math.floor(relativeMouseX / cellWidth);
+                    const gridY = Math.floor(relativeMouseY / cellHeight);
+
+                    const startX = gridX - pieceAnchor.x;
+                    const startY = gridY - pieceAnchor.y;
+
+                    const previewX = startX * cellWidth;
+                    const previewY = startY * cellHeight;
+
+                    piecePreviewContainer.style.transform = `translate(${previewX}px, ${previewY}px)`;
+
+                    const isValid = isValidPlacement(startX, startY, selectedPieceData);
+                    piecePreviewContainer.classList.toggle('invalid-placement', !isValid);
+                } else {
+                    // ボードの外ではプレビューを非表示
+                    piecePreviewContainer.style.display = 'none';
+                }
+            }
+
             function updatePreviewPiece() { if (!selectedPieceData) return; redrawPiece(piecePreviewContainer, selectedPieceData.shape, selectedPieceData.color); }
 
             function onBoardClick(e) {
@@ -278,7 +332,7 @@
                 playerTurnEl.innerText = PLAYER_NAMES[currentPlayer];
                 
                 selectedPieceData = null;
-                if (piecePreviewContainer) piecePreviewContainer.style.display = 'none';
+                if (piecePreviewContainer) piecePreviewContainer.style.display = 'none'; // ターン開始時にプレビューを非表示
                 rotateButton.style.display = 'none';
                 document.querySelectorAll('.piece.selected').forEach(p => p.classList.remove('selected'));
 
