@@ -15,7 +15,7 @@ This document outlines the technical stack and development guidelines for this w
 ## Development Guidelines
 
 - **Keep it Vanilla:** All new features and modifications must be implemented using only plain HTML, CSS, and JavaScript. Do not introduce any external libraries or frameworks (like jQuery, Lodash, React, etc.).
-- **Single File Structure:** All code (HTML, CSS, JS) must remain within the `index.html` file. Do not create separate `.js` or `.css` files.
+- **Single File Structure:** This is a single-page HTML application. All code (HTML, CSS, JS) must remain within the `index.html` file. Do not create separate `.js` or `.css` files.
 - **DOM Manipulation:** Use standard Web APIs like `document.getElementById`, `document.createElement`, and `element.addEventListener` for all DOM interactions.
 - **Styling:** Apply styles by adding new rules to the existing `<style>` block. Maintain the existing styling conventions.
 - **Code Organization:** Write new JavaScript logic in well-named, single-purpose functions to maintain readability and organization within the single script tag.
