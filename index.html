@@ -183,8 +183,8 @@
                 piecePreviewContainer.id = 'piece-preview';
                 boardContainer.appendChild(piecePreviewContainer);
 
-                const firstCell = boardContainer.querySelector('.grid-cell');
-                if (firstCell) { const rect = firstCell.getBoundingClientRect(); cellWidth = rect.width; cellHeight = rect.height; }
+                cellWidth = boardContainer.offsetWidth / BOARD_SIZE;
+                cellHeight = boardContainer.offsetHeight / BOARD_SIZE;
 
                 PLAYER_ORDER.forEach(color => {
                     allPlayerPieces[color] = {};
@@ -230,7 +230,7 @@
                     e.currentTarget.classList.add('selected');
                     rotateButton.style.display = 'inline-block';
                     selectedPieceData = allPlayerPieces[color][id];
-                    for (let y = 0; y < selectedPieceData.shape.length; y++) for (let x = 0; x < selectedPieceData.shape[y].length; x++) if(selectedPieceData.shape[y][x] === 1) { pieceAnchor = {x, y}; break; }
+                    pieceAnchor = pieceAnchorForShape(selectedPieceData.shape);
                     updatePreviewPiece();
                     if (!isTouchDevice) piecePreviewContainer.style.display = 'grid';
                 });
@@ -244,7 +244,7 @@
                 if (!selectedPieceData) return;
                 selectedPieceData.shape = rotateMatrix(selectedPieceData.shape);
                 redrawPiece(selectedPieceData.element, selectedPieceData.shape, selectedPieceData.color);
-                for (let y = 0; y < selectedPieceData.shape.length; y++) for (let x = 0; x < selectedPieceData.shape[y].length; x++) if(selectedPieceData.shape[y][x] === 1) { pieceAnchor = {x, y}; break; }
+                pieceAnchor = pieceAnchorForShape(selectedPieceData.shape);
                 updatePreviewPiece();
             }
             
