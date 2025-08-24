@@ -29,14 +29,15 @@
 
         #board-container{display:grid;grid-template-columns:repeat(20, 1fr);grid-template-rows:repeat(20, 1fr);border:2px solid #333; width: 500px; height: 500px; background-color:#fff;position:relative}
         .grid-cell{width:100%;height:100%;background-color:#ddd;border:1px solid #ccc;box-sizing:border-box; cursor: pointer;}
-        .preview-valid { background-color: rgba(0, 255, 0, 0.5) !important; }
-        .preview-invalid { background-color: rgba(255, 0, 0, 0.5) !important; }
         .valid-move-highlight { background-color: rgba(255, 255, 0, 0.4) !important; }
         .color-blue{background-color:#0077b6}
         .color-yellow{background-color:#fecb00}
         .color-red{background-color:#c00000}
         .color-green{background-color:#00b050}
         
+        #piece-preview { position: absolute; opacity: 0.7; pointer-events: none; z-index: 15; display: none; }
+        #piece-preview.invalid-placement { filter: grayscale(1) brightness(1.5) sepia(1) hue-rotate(-50deg); }
+
         #rules-container { margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee; }
         #rules-toggle { margin: 0; padding: 5px; font-size: 16px; cursor: pointer; border-radius: 5px; }
         #rules-toggle:hover { background-color: #f5f5f5; }
@@ -69,7 +70,6 @@
             }
             #piece-list {
                 gap: 5px;
-                /* ピースが多すぎるとはみ出るのでスクロール可能にする */
                 max-height: 150px;
                 overflow-y: auto;
                 padding: 5px;
@@ -147,6 +147,8 @@
 
             let selectedPieceData = null;
             let pieceAnchor = {x: 0, y: 0};
+            let piecePreviewContainer = null;
+            let cellWidth = 0, cellHeight = 0;
             
             const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 
@@ -176,6 +178,14 @@
                 boardContainer.innerHTML = '';
                 pieceListContainer.innerHTML = '';
                 createBoard();
+                
+                piecePreviewContainer = document.createElement('div');
+                piecePreviewContainer.id = 'piece-preview';
+                boardContainer.appendChild(piecePreviewContainer);
+
+                const firstCell = boardContainer.querySelector('.grid-cell');
+                if (firstCell) { const rect = firstCell.getBoundingClientRect(); cellWidth = rect.width; cellHeight = rect.height; }
+
                 PLAYER_ORDER.forEach(color => {
                     allPlayerPieces[color] = {};
                     for (const id in PIECES_DATA) {
@@ -201,7 +211,14 @@
             function saveState() { const state = { boardState: JSON.parse(JSON.stringify(boardState)), allPlayerPieces: JSON.parse(JSON.stringify(allPlayerPieces, (k, v) => k === 'element' ? undefined : v)), isFirstTurn: {...isFirstTurn}, passedPlayers: {...passedPlayers}, currentPlayerIndex: currentPlayerIndex }; history.push(state); undoButton.disabled = false; }
             function onUndo() { if (history.length === 0) return; const lastState = history.pop(); boardState = lastState.boardState; currentPlayerIndex = lastState.currentPlayerIndex; isFirstTurn = lastState.isFirstTurn; passedPlayers = lastState.passedPlayers; PLAYER_ORDER.forEach(color => { for(const id in lastState.allPlayerPieces[color]) { allPlayerPieces[color][id].used = lastState.allPlayerPieces[color][id].used; allPlayerPieces[color][id].shape = lastState.allPlayerPieces[color][id].shape; } }); if (history.length === 0) undoButton.disabled = true; renderFromState(); }
             
-            function createBoard() { for (let i = 0; i < BOARD_SIZE * BOARD_SIZE; i++) { const cell = document.createElement('div'); cell.classList.add('grid-cell'); cell.dataset.x = i % BOARD_SIZE; cell.dataset.y = Math.floor(i / BOARD_SIZE); cell.addEventListener('click', onBoardClick); if (!isTouchDevice) { cell.addEventListener('mouseover', e => handlePreview(e, true)); } boardContainer.appendChild(cell); } if (!isTouchDevice) { boardContainer.addEventListener('mouseleave', () => { clearPreview(); highlightValidMoves(); }); } }
+            function createBoard() { 
+                for (let i = 0; i < BOARD_SIZE * BOARD_SIZE; i++) { const cell = document.createElement('div'); cell.classList.add('grid-cell'); cell.dataset.x = i % BOARD_SIZE; cell.dataset.y = Math.floor(i / BOARD_SIZE); cell.addEventListener('click', onBoardClick); boardContainer.appendChild(cell); } 
+                if (!isTouchDevice) { 
+                    boardContainer.addEventListener('mousemove', handleBoardMouseMove);
+                    boardContainer.addEventListener('mouseleave', () => { if (piecePreviewContainer) piecePreviewContainer.style.display = 'none'; });
+                    boardContainer.addEventListener('mouseenter', () => { if (selectedPieceData) piecePreviewContainer.style.display = 'grid'; });
+                }
+            }
             
             function createPieceElement(pieceData) {
                 const { id, shape, color } = pieceData;
@@ -213,7 +230,9 @@
                     e.currentTarget.classList.add('selected');
                     rotateButton.style.display = 'inline-block';
                     selectedPieceData = allPlayerPieces[color][id];
-                    for (let y = 0; y < selectedPieceData.shape.length; y++) for (let x = 0; x < selectedPieceData.shape[y].length; x++) if(selectedPieceData.shape[y][x] === 1) { pieceAnchor = {x, y}; return; }
+                    for (let y = 0; y < selectedPieceData.shape.length; y++) for (let x = 0; x < selectedPieceData.shape[y].length; x++) if(selectedPieceData.shape[y][x] === 1) { pieceAnchor = {x, y}; break; }
+                    updatePreviewPiece();
+                    if (!isTouchDevice) piecePreviewContainer.style.display = 'grid';
                 });
                 if (!isTouchDevice) {
                     pieceEl.addEventListener('contextmenu', e => { e.preventDefault(); onRotate(); });
@@ -225,15 +244,16 @@
                 if (!selectedPieceData) return;
                 selectedPieceData.shape = rotateMatrix(selectedPieceData.shape);
                 redrawPiece(selectedPieceData.element, selectedPieceData.shape, selectedPieceData.color);
-                for (let y = 0; y < selectedPieceData.shape.length; y++) for (let x = 0; x < selectedPieceData.shape[y].length; x++) if(selectedPieceData.shape[y][x] === 1) { pieceAnchor = {x, y}; return; }
-                if (!isTouchDevice) { const hoveredCell = document.querySelector('.grid-cell:hover'); if (hoveredCell) handlePreview({ target: hoveredCell }, true); }
+                for (let y = 0; y < selectedPieceData.shape.length; y++) for (let x = 0; x < selectedPieceData.shape[y].length; x++) if(selectedPieceData.shape[y][x] === 1) { pieceAnchor = {x, y}; break; }
+                updatePreviewPiece();
             }
             
-            function redrawPiece(pieceEl, shape, color) { const pieceCellSize = window.innerWidth <= 768 ? 12 : 15; pieceEl.innerHTML = ''; const rows = shape.length, cols = shape[0].length; pieceEl.style.gridTemplateRows = `repeat(${rows}, ${pieceCellSize}px)`; pieceEl.style.gridTemplateColumns = `repeat(${cols}, ${pieceCellSize}px)`; for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) { const cell = document.createElement('div'); cell.classList.add('piece-cell'); if (shape[y][x] === 1) cell.classList.add(`color-${color}`); else cell.classList.add('empty'); pieceEl.appendChild(cell); } }
+            function redrawPiece(targetEl, shape, color) { const isPreview = targetEl.id === 'piece-preview'; const pieceCellSize = isPreview ? cellWidth : (window.innerWidth <= 768 ? 12 : 15); targetEl.innerHTML = ''; const rows = shape.length, cols = shape[0].length; targetEl.style.gridTemplateRows = `repeat(${rows}, ${pieceCellSize}px)`; targetEl.style.gridTemplateColumns = `repeat(${cols}, ${pieceCellSize}px)`; for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) { const cell = document.createElement('div'); cell.classList.add('piece-cell'); if (shape[y][x] === 1) cell.classList.add(`color-${color}`); else if (!isPreview) cell.classList.add('empty'); targetEl.appendChild(cell); } }
             function rotateMatrix(matrix) { const rows = matrix.length, cols = matrix[0].length; const newMatrix = Array.from({ length: cols }, () => Array(rows).fill(0)); for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) newMatrix[x][rows - 1 - y] = matrix[y][x]; return newMatrix; }
-            function handlePreview(e, show) { if (!selectedPieceData || !e.target.classList.contains('grid-cell')) return; clearPreview(); clearHighlights(); if (!show) return; const hoverX = parseInt(e.target.dataset.x); const hoverY = parseInt(e.target.dataset.y); const startX = hoverX - pieceAnchor.x; const startY = hoverY - pieceAnchor.y; const isValid = isValidPlacement(startX, startY, selectedPieceData); const { shape } = selectedPieceData; for (let y = 0; y < shape.length; y++) for (let x = 0; x < shape[y].length; x++) if (shape[y][x] === 1) { const gridX = startX + x; const gridY = startY + y; const cell = document.querySelector(`.grid-cell[data-x='${gridX}'][data-y='${gridY}']`); if (cell) cell.classList.add(isValid ? 'preview-valid' : 'preview-invalid'); } }
-            function clearPreview() { document.querySelectorAll('.preview-valid, .preview-invalid').forEach(c => { c.classList.remove('preview-valid', 'preview-invalid'); }); }
             
+            function handleBoardMouseMove(e) { if (!selectedPieceData) return; const rect = boardContainer.getBoundingClientRect(); const mouseX = e.clientX - rect.left; const mouseY = e.clientY - rect.top; const gridX = Math.floor(mouseX / cellWidth); const gridY = Math.floor(mouseY / cellHeight); const startX = gridX - pieceAnchor.x; const startY = gridY - pieceAnchor.y; const previewX = startX * cellWidth; const previewY = startY * cellHeight; piecePreviewContainer.style.transform = `translate(${previewX}px, ${previewY}px)`; const isValid = isValidPlacement(startX, startY, selectedPieceData); piecePreviewContainer.classList.toggle('invalid-placement', !isValid); }
+            function updatePreviewPiece() { if (!selectedPieceData) return; redrawPiece(piecePreviewContainer, selectedPieceData.shape, selectedPieceData.color); }
+
             function onBoardClick(e) {
                 const currentPlayer = PLAYER_ORDER[currentPlayerIndex]; if (gameMode === 'solo' && AI_PLAYERS.includes(currentPlayer)) return;
                 if (!selectedPieceData) { alert('先に左のリストからピースを選択してください。'); return; }
@@ -244,10 +264,6 @@
                     placePieceOnBoard(startX, startY, selectedPieceData);
                     selectedPieceData.used = true;
                     isFirstTurn[selectedPieceData.color] = false;
-                    clearPreview();
-                    selectedPieceData.element.classList.remove('selected');
-                    rotateButton.style.display = 'none';
-                    selectedPieceData = null;
                     nextTurn();
                 } else {
                     alert('ここには配置できません！ルールを確認してください。');
@@ -260,6 +276,12 @@
             function startTurn() {
                 const currentPlayer = PLAYER_ORDER[currentPlayerIndex];
                 playerTurnEl.innerText = PLAYER_NAMES[currentPlayer];
+                
+                selectedPieceData = null;
+                if (piecePreviewContainer) piecePreviewContainer.style.display = 'none';
+                rotateButton.style.display = 'none';
+                document.querySelectorAll('.piece.selected').forEach(p => p.classList.remove('selected'));
+
                 const allPieceEls = pieceListContainer.querySelectorAll('.piece');
                 allPieceEls.forEach(el => { const color = el.dataset.color; const id = el.dataset.pieceId; const isUsed = allPlayerPieces[color][id].used; if (color === currentPlayer && !isUsed) { el.style.display = 'grid'; } else { el.style.display = 'none'; } });
                 
