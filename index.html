@@ -31,6 +31,7 @@
         .grid-cell{width:100%;height:100%;background-color:#ddd;border:1px solid #ccc;box-sizing:border-box; cursor: pointer;}
         .preview-valid { background-color: rgba(0, 255, 0, 0.5) !important; }
         .preview-invalid { background-color: rgba(255, 0, 0, 0.5) !important; }
+        .valid-move-highlight { background-color: rgba(0, 0, 0, 0.15) !important; }
         .color-blue{background-color:#0077b6}
         .color-yellow{background-color:#fecb00}
         .color-red{background-color:#c00000}
@@ -147,7 +148,6 @@
             let selectedPieceData = null;
             let pieceAnchor = {x: 0, y: 0};
             
-            // ★★★ タッチデバイスかどうかの判定 ★★★
             const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 
             document.getElementById('solo-lvl1-btn').addEventListener('click', () => startGame('solo', 1));
@@ -201,7 +201,7 @@
             function saveState() { const state = { boardState: JSON.parse(JSON.stringify(boardState)), allPlayerPieces: JSON.parse(JSON.stringify(allPlayerPieces, (k, v) => k === 'element' ? undefined : v)), isFirstTurn: {...isFirstTurn}, passedPlayers: {...passedPlayers}, currentPlayerIndex: currentPlayerIndex }; history.push(state); undoButton.disabled = false; }
             function onUndo() { if (history.length === 0) return; const lastState = history.pop(); boardState = lastState.boardState; currentPlayerIndex = lastState.currentPlayerIndex; isFirstTurn = lastState.isFirstTurn; passedPlayers = lastState.passedPlayers; PLAYER_ORDER.forEach(color => { for(const id in lastState.allPlayerPieces[color]) { allPlayerPieces[color][id].used = lastState.allPlayerPieces[color][id].used; allPlayerPieces[color][id].shape = lastState.allPlayerPieces[color][id].shape; } }); if (history.length === 0) undoButton.disabled = true; renderFromState(); }
             
-            function createBoard() { for (let i = 0; i < BOARD_SIZE * BOARD_SIZE; i++) { const cell = document.createElement('div'); cell.classList.add('grid-cell'); cell.dataset.x = i % BOARD_SIZE; cell.dataset.y = Math.floor(i / BOARD_SIZE); cell.addEventListener('click', onBoardClick); if (!isTouchDevice) { cell.addEventListener('mouseover', e => handlePreview(e, true)); } boardContainer.appendChild(cell); } if (!isTouchDevice) { boardContainer.addEventListener('mouseleave', () => clearPreview()); } }
+            function createBoard() { for (let i = 0; i < BOARD_SIZE * BOARD_SIZE; i++) { const cell = document.createElement('div'); cell.classList.add('grid-cell'); cell.dataset.x = i % BOARD_SIZE; cell.dataset.y = Math.floor(i / BOARD_SIZE); cell.addEventListener('click', onBoardClick); if (!isTouchDevice) { cell.addEventListener('mouseover', e => handlePreview(e, true)); } boardContainer.appendChild(cell); } if (!isTouchDevice) { boardContainer.addEventListener('mouseleave', () => { clearPreview(); highlightValidMoves(); }); } }
             
             function createPieceElement(pieceData) {
                 const { id, shape, color } = pieceData;
@@ -211,7 +211,7 @@
                     const currentPlayer = PLAYER_ORDER[currentPlayerIndex]; if(gameMode === 'solo' && AI_PLAYERS.includes(currentPlayer)) return;
                     document.querySelectorAll('.piece.selected').forEach(p => p.classList.remove('selected'));
                     e.currentTarget.classList.add('selected');
-                    rotateButton.style.display = 'inline-block'; // 回転ボタン表示
+                    rotateButton.style.display = 'inline-block';
                     selectedPieceData = allPlayerPieces[color][id];
                     for (let y = 0; y < selectedPieceData.shape.length; y++) for (let x = 0; x < selectedPieceData.shape[y].length; x++) if(selectedPieceData.shape[y][x] === 1) { pieceAnchor = {x, y}; return; }
                 });
@@ -231,7 +231,7 @@
             
             function redrawPiece(pieceEl, shape, color) { const pieceCellSize = window.innerWidth <= 768 ? 12 : 15; pieceEl.innerHTML = ''; const rows = shape.length, cols = shape[0].length; pieceEl.style.gridTemplateRows = `repeat(${rows}, ${pieceCellSize}px)`; pieceEl.style.gridTemplateColumns = `repeat(${cols}, ${pieceCellSize}px)`; for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) { const cell = document.createElement('div'); cell.classList.add('piece-cell'); if (shape[y][x] === 1) cell.classList.add(`color-${color}`); else cell.classList.add('empty'); pieceEl.appendChild(cell); } }
             function rotateMatrix(matrix) { const rows = matrix.length, cols = matrix[0].length; const newMatrix = Array.from({ length: cols }, () => Array(rows).fill(0)); for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) newMatrix[x][rows - 1 - y] = matrix[y][x]; return newMatrix; }
-            function handlePreview(e, show) { if (!selectedPieceData || !e.target.classList.contains('grid-cell')) return; clearPreview(); if (!show) return; const hoverX = parseInt(e.target.dataset.x); const hoverY = parseInt(e.target.dataset.y); const startX = hoverX - pieceAnchor.x; const startY = hoverY - pieceAnchor.y; const isValid = isValidPlacement(startX, startY, selectedPieceData); const { shape } = selectedPieceData; for (let y = 0; y < shape.length; y++) for (let x = 0; x < shape[y].length; x++) if (shape[y][x] === 1) { const gridX = startX + x; const gridY = startY + y; const cell = document.querySelector(`.grid-cell[data-x='${gridX}'][data-y='${gridY}']`); if (cell) cell.classList.add(isValid ? 'preview-valid' : 'preview-invalid'); } }
+            function handlePreview(e, show) { if (!selectedPieceData || !e.target.classList.contains('grid-cell')) return; clearPreview(); clearHighlights(); if (!show) return; const hoverX = parseInt(e.target.dataset.x); const hoverY = parseInt(e.target.dataset.y); const startX = hoverX - pieceAnchor.x; const startY = hoverY - pieceAnchor.y; const isValid = isValidPlacement(startX, startY, selectedPieceData); const { shape } = selectedPieceData; for (let y = 0; y < shape.length; y++) for (let x = 0; x < shape[y].length; x++) if (shape[y][x] === 1) { const gridX = startX + x; const gridY = startY + y; const cell = document.querySelector(`.grid-cell[data-x='${gridX}'][data-y='${gridY}']`); if (cell) cell.classList.add(isValid ? 'preview-valid' : 'preview-invalid'); } }
             function clearPreview() { document.querySelectorAll('.preview-valid, .preview-invalid').forEach(c => { c.classList.remove('preview-valid', 'preview-invalid'); }); }
             
             function onBoardClick(e) {
@@ -246,7 +246,7 @@
                     isFirstTurn[selectedPieceData.color] = false;
                     clearPreview();
                     selectedPieceData.element.classList.remove('selected');
-                    rotateButton.style.display = 'none'; // 回転ボタン非表示
+                    rotateButton.style.display = 'none';
                     selectedPieceData = null;
                     nextTurn();
                 } else {
@@ -263,6 +263,8 @@
                 const allPieceEls = pieceListContainer.querySelectorAll('.piece');
                 allPieceEls.forEach(el => { const color = el.dataset.color; const id = el.dataset.pieceId; const isUsed = allPlayerPieces[color][id].used; if (color === currentPlayer && !isUsed) { el.style.display = 'grid'; } else { el.style.display = 'none'; } });
                 
+                highlightValidMoves();
+
                 if (gameMode === 'solo' && AI_PLAYERS.includes(currentPlayer)) {
                     document.querySelectorAll('.action-button').forEach(b => b.disabled = true);
                     playerTurnEl.innerText += ' (思考中...)';
@@ -290,11 +292,54 @@
                 saveState(); passedPlayers[currentPlayer] = true; nextTurn();
             }
             
+            function clearHighlights() { document.querySelectorAll('.valid-move-highlight').forEach(c => c.classList.remove('valid-move-highlight')); }
+            function highlightValidMoves() {
+                clearHighlights();
+                const currentPlayer = PLAYER_ORDER[currentPlayerIndex];
+                if (gameMode === 'solo' && AI_PLAYERS.includes(currentPlayer)) return;
+
+                if (isFirstTurn[currentPlayer]) {
+                    const targetCorner = { blue: [0, 0], yellow: [19, 19], red: [0, 19], green: [19, 0] }[currentPlayer];
+                    const cell = document.querySelector(`.grid-cell[data-x='${targetCorner[0]}'][data-y='${targetCorner[1]}']`);
+                    if (cell) cell.classList.add('valid-move-highlight');
+                    return;
+                }
+
+                for (let y = 0; y < BOARD_SIZE; y++) {
+                    for (let x = 0; x < BOARD_SIZE; x++) {
+                        if (boardState[y][x] !== null) continue;
+                        let touchesCorner = false;
+                        const corners = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+                        for (const [dy, dx] of corners) {
+                            const checkY = y + dy, checkX = x + dx;
+                            if (checkY >= 0 && checkY < BOARD_SIZE && checkX >= 0 && checkX < BOARD_SIZE && boardState[checkY][checkX] === currentPlayer) {
+                                touchesCorner = true;
+                                break;
+                            }
+                        }
+                        if (!touchesCorner) continue;
+                        let touchesSide = false;
+                        const neighbors = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+                        for (const [dy, dx] of neighbors) {
+                            const checkY = y + dy, checkX = x + dx;
+                            if (checkY >= 0 && checkY < BOARD_SIZE && checkX >= 0 && checkX < BOARD_SIZE && boardState[checkY][checkX] === currentPlayer) {
+                                touchesSide = true;
+                                break;
+                            }
+                        }
+                        if (!touchesSide) {
+                            const cell = document.querySelector(`.grid-cell[data-x='${x}'][data-y='${y}']`);
+                            if (cell) cell.classList.add('valid-move-highlight');
+                        }
+                    }
+                }
+            }
+
             function shuffleArray(array) { for (let i = array.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [array[i], array[j]] = [array[j], array[i]]; } }
             function pieceAnchorForShape(shape) { for (let y = 0; y < shape.length; y++) for (let x = 0; x < shape[y].length; x++) if(shape[y][x] === 1) return {x, y}; return {x:0, y:0}; }
             function isValidPlacement(startX, startY, pieceData) { if (!pieceData) return false; const { shape, color } = pieceData; for (let y = 0; y < shape.length; y++) for (let x = 0; x < shape[y].length; x++) if (shape[y][x] === 1) { const gridX = startX + x, gridY = startY + y; if (gridX < 0 || gridX >= BOARD_SIZE || gridY < 0 || gridY >= BOARD_SIZE) return false; if (boardState[gridY][gridX] !== null) return false; } if (isFirstTurn[color]) { const targetCorner = { blue: [0, 0], yellow: [19, 19], red: [0, 19], green: [19, 0] }[color]; let coversStartCorner = false; for (let y = 0; y < shape.length; y++) { for (let x = 0; x < shape[y].length; x++) if (shape[y][x] === 1 && (startX + x) === targetCorner[0] && (startY + y) === targetCorner[1]) { coversStartCorner = true; break; } if (coversStartCorner) break; } return coversStartCorner; } else { let touchesCorner = false; for (let y = 0; y < shape.length; y++) for (let x = 0; x < shape[y].length; x++) if (shape[y][x] === 1) { const gridX = startX + x, gridY = startY + y; const neighbors = [[-1, 0], [1, 0], [0, -1], [0, 1]]; for (const [dy, dx] of neighbors) { const checkY = gridY + dy, checkX = gridX + dx; if (checkY >= 0 && checkY < BOARD_SIZE && checkX >= 0 && checkX < BOARD_SIZE && boardState[checkY][checkX] === color) return false; } const corners = [[-1, -1], [-1, 1], [1, -1], [1, 1]]; for (const [dy, dx] of corners) { const checkY = gridY + dy, checkX = gridX + dx; if (checkY >= 0 && checkY < BOARD_SIZE && checkX >= 0 && checkX < BOARD_SIZE && boardState[checkY][checkX] === color) touchesCorner = true; } } return touchesCorner; } }
             function placePieceOnBoard(startX, startY, pieceData) { const { shape, color } = pieceData; for(let y = 0; y < shape.length; y++) for (let x = 0; x < shape[y].length; x++) if (shape[y][x] === 1) { const gridX = startX + x, gridY = startY + y; if (gridX < 0 || gridX >= BOARD_SIZE || gridY < 0 || gridY >= BOARD_SIZE) continue; boardState[gridY][gridX] = color; const cell = document.querySelector(`.grid-cell[data-x='${gridX}'][data-y='${gridY}']`); if (cell) cell.className = `grid-cell placed color-${color}`; } }
-            function endGame() { let finalScores = {}; let resultText = "--- ゲーム終了！最終スコア ---\n\n"; PLAYER_ORDER.forEach(color => { let score = 0; const playerPieces = allPlayerPieces[color]; const hasUsedAllPieces = Object.values(playerPieces).every(p => p.used); if (hasUsedAllPieces) { score = 15; const smallestPiece = playerPieces['I1']; if (smallestPiece && smallestPiece.used) { score += 5; } } else { for(const id in playerPieces) { if (!playerPieces[id].used) { score -= playerPieces[id].shape.flat().reduce((a, b) => a + b, 0); } } } finalScores[color] = score; resultText += `${PLAYER_NAMES[color]}: ${score}点\n`; }); const winnerScore = Math.max(...Object.values(finalScores)); const winners = Object.keys(finalScores).filter(color => finalScores[color] === winnerScore); resultText += "\n勝者: " + winners.map(color => PLAYER_NAMES[color]).join(', '); alert(resultText); document.querySelectorAll('.action-button').forEach(b => b.disabled = true); playerTurnEl.innerText = 'Game Over'; }
+            function endGame() { clearHighlights(); let finalScores = {}; let resultText = "--- ゲーム終了！最終スコア ---\n\n"; PLAYER_ORDER.forEach(color => { let score = 0; const playerPieces = allPlayerPieces[color]; const hasUsedAllPieces = Object.values(playerPieces).every(p => p.used); if (hasUsedAllPieces) { score = 15; const smallestPiece = playerPieces['I1']; if (smallestPiece && smallestPiece.used) { score += 5; } } else { for(const id in playerPieces) { if (!playerPieces[id].used) { score -= playerPieces[id].shape.flat().reduce((a, b) => a + b, 0); } } } finalScores[color] = score; resultText += `${PLAYER_NAMES[color]}: ${score}点\n`; }); const winnerScore = Math.max(...Object.values(finalScores)); const winners = Object.keys(finalScores).filter(color => finalScores[color] === winnerScore); resultText += "\n勝者: " + winners.map(color => PLAYER_NAMES[color]).join(', '); alert(resultText); document.querySelectorAll('.action-button').forEach(b => b.disabled = true); playerTurnEl.innerText = 'Game Over'; }
         });
     </script>
 </body>
