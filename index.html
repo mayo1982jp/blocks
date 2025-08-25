@@ -139,7 +139,8 @@
             <h2 id="player-turn"></h2>
             <div id="piece-list"></div>
             <div class="button-area">
-                <button id="flip-button" class="action-button">反転 ⇄</button>
+                <button id="flip-vertical-button" class="action-button">上下反転 ⇅</button>
+                <button id="flip-button" class="action-button">左右反転 ⇄</button>
                 <button id="rotate-button" class="action-button">回転 ⤵</button>
             </div>
             <div id="rules-container">
@@ -180,7 +181,8 @@
             const passButton = document.getElementById('pass-button');
             const undoButton = document.getElementById('undo-button');
             const rotateButton = document.getElementById('rotate-button');
-            const flipButton = document.getElementById('flip-button'); // 反転ボタンの要素を取得
+            const flipButton = document.getElementById('flip-button'); // 左右反転ボタンの要素を取得
+            const flipVerticalButton = document.getElementById('flip-vertical-button'); // 上下反転ボタンの要素を取得
             const homeButton = document.getElementById('home-button');
             const rulesContainer = document.getElementById('rules-container');
             const rulesToggle = document.getElementById('rules-toggle');
@@ -272,7 +274,8 @@
                 passButton.addEventListener('click', onPass);
                 undoButton.addEventListener('click', onUndo);
                 rotateButton.addEventListener('click', onRotate);
-                flipButton.addEventListener('click', onFlip); // 反転ボタンのイベントリスナーを追加
+                flipButton.addEventListener('click', onFlip); // 左右反転ボタンのイベントリスナーを追加
+                flipVerticalButton.addEventListener('click', onFlipVertical); // 上下反転ボタンのイベントリスナーを追加
                 startTurn();
             }
 
@@ -299,7 +302,8 @@
                     document.querySelectorAll('.piece.selected').forEach(p => p.classList.remove('selected'));
                     e.currentTarget.classList.add('selected');
                     rotateButton.style.display = 'inline-block';
-                    flipButton.style.display = 'inline-block'; // 反転ボタンを表示
+                    flipButton.style.display = 'inline-block'; // 左右反転ボタンを表示
+                    flipVerticalButton.style.display = 'inline-block'; // 上下反転ボタンを表示
                     selectedPieceData = allPlayerPieces[color][id];
                     pieceAnchor = pieceAnchorForShape(selectedPieceData.shape);
                     updatePreviewPiece();
@@ -326,10 +330,22 @@
                 }
             }
 
-            // 新しい反転関数
+            // ピースを水平方向に反転させる関数
             function onFlip() {
                 if (!selectedPieceData) return;
-                selectedPieceData.shape = flipMatrix(selectedPieceData.shape);
+                selectedPieceData.shape = flipMatrixHorizontal(selectedPieceData.shape);
+                redrawPiece(selectedPieceData.element, selectedPieceData.shape, selectedPieceData.color);
+                pieceAnchor = pieceAnchorForShape(selectedPieceData.shape);
+                updatePreviewPiece();
+                if (!isTouchDevice) {
+                    handleGlobalMouseMove({ clientX: lastMouseX, clientY: lastMouseY });
+                }
+            }
+
+            // ピースを垂直方向に反転させる関数
+            function onFlipVertical() {
+                if (!selectedPieceData) return;
+                selectedPieceData.shape = flipMatrixVertical(selectedPieceData.shape);
                 redrawPiece(selectedPieceData.element, selectedPieceData.shape, selectedPieceData.color);
                 pieceAnchor = pieceAnchorForShape(selectedPieceData.shape);
                 updatePreviewPiece();
@@ -342,8 +358,13 @@
             function rotateMatrix(matrix) { const rows = matrix.length, cols = matrix[0].length; const newMatrix = Array.from({ length: cols }, () => Array(rows).fill(0)); for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) newMatrix[x][rows - 1 - y] = matrix[y][x]; return newMatrix; }
             
             // ピースを水平方向に反転させる関数
-            function flipMatrix(matrix) {
+            function flipMatrixHorizontal(matrix) {
                 return matrix.map(row => [...row].reverse());
+            }
+
+            // ピースを垂直方向に反転させる関数
+            function flipMatrixVertical(matrix) {
+                return [...matrix].reverse();
             }
 
             // グローバルなマウス移動ハンドラ
@@ -447,7 +468,8 @@
                 selectedPieceData = null;
                 if (piecePreviewContainer) piecePreviewContainer.style.display = 'none'; // ターン開始時にプレビューを非表示
                 rotateButton.style.display = 'none';
-                flipButton.style.display = 'none'; // 反転ボタンを非表示
+                flipButton.style.display = 'none'; // 左右反転ボタンを非表示
+                flipVerticalButton.style.display = 'none'; // 上下反転ボタンを非表示
                 document.querySelectorAll('.piece.selected').forEach(p => p.classList.remove('selected'));
 
                 const allPieceEls = pieceListContainer.querySelectorAll('.piece');
@@ -474,24 +496,27 @@
                 const currentPlayer = PLAYER_ORDER[currentPlayerIndex]; let availablePieces = Object.values(allPlayerPieces[currentPlayer]).filter(p => !p.used); shuffleArray(availablePieces); let allCoordinates = []; for (let y = 0; y < BOARD_SIZE; y++) for(let x=0; x < BOARD_SIZE; x++) allCoordinates.push({x,y}); shuffleArray(allCoordinates);
                 for (const piece of availablePieces) { 
                     let originalShape = JSON.parse(JSON.stringify(piece.shape)); // 元の形状を保存
-                    for (let flip = 0; flip < 2; flip++) { // 反転の有無 (0:なし, 1:あり)
-                        for (let rotation = 0; rotation < 4; rotation++) { 
-                            for (const coord of allCoordinates) { 
-                                const anchor = pieceAnchorForShape(piece.shape); 
-                                const startX = coord.x - anchor.x; 
-                                const startY = coord.y - anchor.y; 
-                                if (isValidPlacement(startX, startY, piece)) { 
-                                    saveState(); 
-                                    placePieceOnBoard(startX, startY, piece); 
-                                    piece.used = true; 
-                                    isFirstTurn[piece.color] = false; 
-                                    nextTurn(); 
-                                    return; 
+                    for (let flipH = 0; flipH < 2; flipH++) { // 水平反転の有無 (0:なし, 1:あり)
+                        for (let flipV = 0; flipV < 2; flipV++) { // 垂直反転の有無 (0:なし, 1:あり)
+                            for (let rotation = 0; rotation < 4; rotation++) { 
+                                for (const coord of allCoordinates) { 
+                                    const anchor = pieceAnchorForShape(piece.shape); 
+                                    const startX = coord.x - anchor.x; 
+                                    const startY = coord.y - anchor.y; 
+                                    if (isValidPlacement(startX, startY, piece)) { 
+                                        saveState(); 
+                                        placePieceOnBoard(startX, startY, piece); 
+                                        piece.used = true; 
+                                        isFirstTurn[piece.color] = false; 
+                                        nextTurn(); 
+                                        return; 
+                                    } 
                                 } 
+                                piece.shape = rotateMatrix(piece.shape); 
                             } 
-                            piece.shape = rotateMatrix(piece.shape); 
-                        } 
-                        if (flip === 0) piece.shape = flipMatrix(piece.shape); // 1回目のループ後に反転
+                            if (flipV === 0) piece.shape = flipMatrixVertical(piece.shape); // 1回目の垂直ループ後に垂直反転
+                        }
+                        if (flipH === 0) piece.shape = flipMatrixHorizontal(piece.shape); // 1回目の水平ループ後に水平反転
                     }
                     piece.shape = originalShape; // ピースの形状を元に戻す
                 }
@@ -502,25 +527,28 @@
                 const currentPlayer = PLAYER_ORDER[currentPlayerIndex]; const availablePieces = Object.values(allPlayerPieces[currentPlayer]).filter(p => !p.used); availablePieces.sort((a, b) => b.shape.flat().reduce((s,c)=>s+c,0) - a.shape.flat().reduce((s,c)=>s+c,0));
                 for (const piece of availablePieces) { 
                     let originalShape = JSON.parse(JSON.stringify(piece.shape)); 
-                    for (let flip = 0; flip < 2; flip++) { // 反転の有無
-                        for (let rotation = 0; rotation < 4; rotation++) { 
-                            for (let y = 0; y < BOARD_SIZE; y++) 
-                                for (let x = 0; x < BOARD_SIZE; x++) { 
-                                    const anchor = pieceAnchorForShape(piece.shape); 
-                                    const startX = x - anchor.x; 
-                                    const startY = y - anchor.y; 
-                                    if (isValidPlacement(startX, startY, piece)) { 
-                                        saveState(); 
-                                        placePieceOnBoard(startX, startY, piece); 
-                                        piece.used = true; 
-                                        isFirstTurn[piece.color] = false; 
-                                        nextTurn(); 
-                                        return; 
+                    for (let flipH = 0; flipH < 2; flipH++) { // 水平反転の有無
+                        for (let flipV = 0; flipV < 2; flipV++) { // 垂直反転の有無
+                            for (let rotation = 0; rotation < 4; rotation++) { 
+                                for (let y = 0; y < BOARD_SIZE; y++) 
+                                    for (let x = 0; x < BOARD_SIZE; x++) { 
+                                        const anchor = pieceAnchorForShape(piece.shape); 
+                                        const startX = x - anchor.x; 
+                                        const startY = y - anchor.y; 
+                                        if (isValidPlacement(startX, startY, piece)) { 
+                                            saveState(); 
+                                            placePieceOnBoard(startX, startY, piece); 
+                                            piece.used = true; 
+                                            isFirstTurn[piece.color] = false; 
+                                            nextTurn(); 
+                                            return; 
+                                        } 
                                     } 
-                                } 
-                            piece.shape = rotateMatrix(piece.shape); 
-                        } 
-                        if (flip === 0) piece.shape = flipMatrix(piece.shape); 
+                                piece.shape = rotateMatrix(piece.shape); 
+                            } 
+                            if (flipV === 0) piece.shape = flipMatrixVertical(piece.shape); 
+                        }
+                        if (flipH === 0) piece.shape = flipMatrixHorizontal(piece.shape); 
                     }
                     piece.shape = originalShape; 
                 }
