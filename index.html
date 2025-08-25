@@ -35,8 +35,12 @@
         .color-red{background-color:#c00000}
         .color-green{background-color:#00b050}
         
-        #piece-preview { position: absolute; opacity: 0.7; pointer-events: none; z-index: 15; display: none; }
-        #piece-preview.invalid-placement { filter: grayscale(1) brightness(1.5) sepia(1) hue-rotate(-50deg); }
+        #piece-preview { position: absolute; opacity: 0.8; pointer-events: none; z-index: 15; display: none; transition: all 0.1s ease-out; top: 0; left: 0; }
+        #piece-preview.invalid-placement { filter: grayscale(1) brightness(1.5) sepia(1) hue-rotate(-50deg); opacity: 0.6; }
+        #piece-preview .piece-cell {
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-sizing: border-box;
+        }
 
         #rules-container { margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee; }
         #rules-toggle { margin: 0; padding: 5px; font-size: 16px; cursor: pointer; border-radius: 5px; }
@@ -99,6 +103,7 @@
             <h2 id="player-turn"></h2>
             <div id="piece-list"></div>
             <div class="button-area">
+                <button id="flip-button" class="action-button" style="display: none;">反転</button>
                 <button id="rotate-button" class="action-button" style="display: none;">回転</button>
                 <button id="undo-button" class="action-button">一手戻す</button>
                 <button id="pass-button" class="action-button">パス</button>
@@ -141,6 +146,7 @@
             const passButton = document.getElementById('pass-button');
             const undoButton = document.getElementById('undo-button');
             const rotateButton = document.getElementById('rotate-button');
+            const flipButton = document.getElementById('flip-button'); // 反転ボタンの要素を取得
             const homeButton = document.getElementById('home-button');
             const rulesContainer = document.getElementById('rules-container');
             const rulesToggle = document.getElementById('rules-toggle');
@@ -154,13 +160,34 @@
 
             let lastMouseX = 0; // マウスの最新のX座標を保持
             let lastMouseY = 0; // マウスの最新のY座標を保持
+            let previewAnimationFrame = null; // アニメーションフレーム管理
 
             // グローバルなマウス移動リスナー
             if (!isTouchDevice) {
                 document.addEventListener('mousemove', (e) => {
                     lastMouseX = e.clientX;
                     lastMouseY = e.clientY;
-                    handleGlobalMouseMove(e);
+                    // スムーズな動きのためrequestAnimationFrameを使用
+                    if (previewAnimationFrame) {
+                        cancelAnimationFrame(previewAnimationFrame);
+                    }
+                    previewAnimationFrame = requestAnimationFrame(() => {
+                        handleGlobalMouseMove(e);
+                    });
+                });
+                
+                // マウスがボードから離れた時の処理
+                boardContainer.addEventListener('mouseleave', () => {
+                    if (piecePreviewContainer) {
+                        piecePreviewContainer.style.display = 'none';
+                    }
+                });
+                
+                // マウスがボードに入った時の処理
+                boardContainer.addEventListener('mouseenter', () => {
+                    if (selectedPieceData && piecePreviewContainer) {
+                        piecePreviewContainer.style.display = 'grid';
+                    }
                 });
             }
 
@@ -211,6 +238,7 @@
                 passButton.addEventListener('click', onPass);
                 undoButton.addEventListener('click', onUndo);
                 rotateButton.addEventListener('click', onRotate);
+                flipButton.addEventListener('click', onFlip); // 反転ボタンのイベントリスナーを追加
                 startTurn();
             }
 
@@ -237,6 +265,7 @@
                     document.querySelectorAll('.piece.selected').forEach(p => p.classList.remove('selected'));
                     e.currentTarget.classList.add('selected');
                     rotateButton.style.display = 'inline-block';
+                    flipButton.style.display = 'inline-block'; // 反転ボタンを表示
                     selectedPieceData = allPlayerPieces[color][id];
                     pieceAnchor = pieceAnchorForShape(selectedPieceData.shape);
                     updatePreviewPiece();
@@ -262,10 +291,27 @@
                     handleGlobalMouseMove({ clientX: lastMouseX, clientY: lastMouseY });
                 }
             }
+
+            // 新しい反転関数
+            function onFlip() {
+                if (!selectedPieceData) return;
+                selectedPieceData.shape = flipMatrix(selectedPieceData.shape);
+                redrawPiece(selectedPieceData.element, selectedPieceData.shape, selectedPieceData.color);
+                pieceAnchor = pieceAnchorForShape(selectedPieceData.shape);
+                updatePreviewPiece();
+                if (!isTouchDevice) {
+                    handleGlobalMouseMove({ clientX: lastMouseX, clientY: lastMouseY });
+                }
+            }
             
             function redrawPiece(targetEl, shape, color) { const isPreview = targetEl.id === 'piece-preview'; const pieceCellSize = isPreview ? cellWidth : (window.innerWidth <= 768 ? 12 : 15); targetEl.innerHTML = ''; const rows = shape.length, cols = shape[0].length; targetEl.style.gridTemplateRows = `repeat(${rows}, ${pieceCellSize}px)`; targetEl.style.gridTemplateColumns = `repeat(${cols}, ${pieceCellSize}px)`; for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) { const cell = document.createElement('div'); cell.classList.add('piece-cell'); if (shape[y][x] === 1) cell.classList.add(`color-${color}`); else if (!isPreview) cell.classList.add('empty'); targetEl.appendChild(cell); } }
             function rotateMatrix(matrix) { const rows = matrix.length, cols = matrix[0].length; const newMatrix = Array.from({ length: cols }, () => Array(rows).fill(0)); for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) newMatrix[x][rows - 1 - y] = matrix[y][x]; return newMatrix; }
             
+            // ピースを水平方向に反転させる関数
+            function flipMatrix(matrix) {
+                return matrix.map(row => [...row].reverse());
+            }
+
             // グローバルなマウス移動ハンドラ
             function handleGlobalMouseMove(e) {
                 if (!selectedPieceData) {
@@ -296,17 +342,50 @@
                     const previewX = startX * cellWidth;
                     const previewY = startY * cellHeight;
 
+                    // スムーズな移動のためのトランジション
+                    piecePreviewContainer.style.transition = 'transform 0.05s ease-out';
                     piecePreviewContainer.style.transform = `translate(${previewX}px, ${previewY}px)`;
 
-                    const isValid = isValidPlacement(startX, startY, selectedPieceData);
+                    // グリッド線の位置に合わせて微調整
+                    const offsetX = relativeMouseX % cellWidth;
+                    const offsetY = relativeMouseY % cellHeight;
+                    const snapX = offsetX < cellWidth / 2 ? previewX : previewX + cellWidth;
+                    const snapY = offsetY < cellHeight / 2 ? previewY : previewY + cellHeight;
+
+                    // 実際の配置位置を計算
+                    const actualStartX = Math.round((mouseX - boardRect.left) / cellWidth) - pieceAnchor.x;
+                    const actualStartY = Math.round((mouseY - boardRect.top) / cellHeight) - pieceAnchor.y;
+
+                    const isValid = isValidPlacement(actualStartX, actualStartY, selectedPieceData);
                     piecePreviewContainer.classList.toggle('invalid-placement', !isValid);
+                    
+                    // 有効/無効の視覚的フィードバック
+                    if (isValid) {
+                        piecePreviewContainer.style.opacity = '0.8';
+                        piecePreviewContainer.style.boxShadow = '0 0 8px rgba(0, 123, 255, 0.5)';
+                    } else {
+                        piecePreviewContainer.style.opacity = '0.6';
+                        piecePreviewContainer.style.boxShadow = '0 0 8px rgba(255, 0, 0, 0.5)';
+                    }
                 } else {
                     // ボードの外ではプレビューを非表示
                     piecePreviewContainer.style.display = 'none';
                 }
             }
 
-            function updatePreviewPiece() { if (!selectedPieceData) return; redrawPiece(piecePreviewContainer, selectedPieceData.shape, selectedPieceData.color); }
+            function updatePreviewPiece() { 
+                if (!selectedPieceData) {
+                    if (piecePreviewContainer) piecePreviewContainer.style.display = 'none';
+                    return; 
+                }
+                redrawPiece(piecePreviewContainer, selectedPieceData.shape, selectedPieceData.color);
+                
+                // 現在のマウス位置で即座にプレビューを更新
+                if (!isTouchDevice) {
+                    const fakeEvent = { clientX: lastMouseX, clientY: lastMouseY };
+                    handleGlobalMouseMove(fakeEvent);
+                }
+            }
 
             function onBoardClick(e) {
                 const currentPlayer = PLAYER_ORDER[currentPlayerIndex]; if (gameMode === 'solo' && AI_PLAYERS.includes(currentPlayer)) return;
@@ -334,6 +413,7 @@
                 selectedPieceData = null;
                 if (piecePreviewContainer) piecePreviewContainer.style.display = 'none'; // ターン開始時にプレビューを非表示
                 rotateButton.style.display = 'none';
+                flipButton.style.display = 'none'; // 反転ボタンを非表示
                 document.querySelectorAll('.piece.selected').forEach(p => p.classList.remove('selected'));
 
                 const allPieceEls = pieceListContainer.querySelectorAll('.piece');
@@ -358,13 +438,58 @@
 
             function executeLvl1AI() {
                 const currentPlayer = PLAYER_ORDER[currentPlayerIndex]; let availablePieces = Object.values(allPlayerPieces[currentPlayer]).filter(p => !p.used); shuffleArray(availablePieces); let allCoordinates = []; for (let y = 0; y < BOARD_SIZE; y++) for(let x=0; x < BOARD_SIZE; x++) allCoordinates.push({x,y}); shuffleArray(allCoordinates);
-                for (const piece of availablePieces) { for (let rotation = 0; rotation < 4; rotation++) { for (const coord of allCoordinates) { const anchor = pieceAnchorForShape(piece.shape); const startX = coord.x - anchor.x; const startY = coord.y - anchor.y; if (isValidPlacement(startX, startY, piece)) { saveState(); placePieceOnBoard(startX, startY, piece); piece.used = true; isFirstTurn[piece.color] = false; nextTurn(); return; } } piece.shape = rotateMatrix(piece.shape); } }
+                for (const piece of availablePieces) { 
+                    let originalShape = JSON.parse(JSON.stringify(piece.shape)); // 元の形状を保存
+                    for (let flip = 0; flip < 2; flip++) { // 反転の有無 (0:なし, 1:あり)
+                        for (let rotation = 0; rotation < 4; rotation++) { 
+                            for (const coord of allCoordinates) { 
+                                const anchor = pieceAnchorForShape(piece.shape); 
+                                const startX = coord.x - anchor.x; 
+                                const startY = coord.y - anchor.y; 
+                                if (isValidPlacement(startX, startY, piece)) { 
+                                    saveState(); 
+                                    placePieceOnBoard(startX, startY, piece); 
+                                    piece.used = true; 
+                                    isFirstTurn[piece.color] = false; 
+                                    nextTurn(); 
+                                    return; 
+                                } 
+                            } 
+                            piece.shape = rotateMatrix(piece.shape); 
+                        } 
+                        if (flip === 0) piece.shape = flipMatrix(piece.shape); // 1回目のループ後に反転
+                    }
+                    piece.shape = originalShape; // ピースの形状を元に戻す
+                }
                 saveState(); passedPlayers[currentPlayer] = true; nextTurn();
             }
             
             function executeLvl2AI() {
                 const currentPlayer = PLAYER_ORDER[currentPlayerIndex]; const availablePieces = Object.values(allPlayerPieces[currentPlayer]).filter(p => !p.used); availablePieces.sort((a, b) => b.shape.flat().reduce((s,c)=>s+c,0) - a.shape.flat().reduce((s,c)=>s+c,0));
-                for (const piece of availablePieces) { let originalShape = JSON.parse(JSON.stringify(piece.shape)); for (let rotation = 0; rotation < 4; rotation++) { for (let y = 0; y < BOARD_SIZE; y++) for (let x = 0; x < BOARD_SIZE; x++) { const anchor = pieceAnchorForShape(piece.shape); const startX = x - anchor.x; const startY = y - anchor.y; if (isValidPlacement(startX, startY, piece)) { saveState(); placePieceOnBoard(startX, startY, piece); piece.used = true; isFirstTurn[piece.color] = false; nextTurn(); return; } } piece.shape = rotateMatrix(piece.shape); } piece.shape = originalShape; }
+                for (const piece of availablePieces) { 
+                    let originalShape = JSON.parse(JSON.stringify(piece.shape)); 
+                    for (let flip = 0; flip < 2; flip++) { // 反転の有無
+                        for (let rotation = 0; rotation < 4; rotation++) { 
+                            for (let y = 0; y < BOARD_SIZE; y++) 
+                                for (let x = 0; x < BOARD_SIZE; x++) { 
+                                    const anchor = pieceAnchorForShape(piece.shape); 
+                                    const startX = x - anchor.x; 
+                                    const startY = y - anchor.y; 
+                                    if (isValidPlacement(startX, startY, piece)) { 
+                                        saveState(); 
+                                        placePieceOnBoard(startX, startY, piece); 
+                                        piece.used = true; 
+                                        isFirstTurn[piece.color] = false; 
+                                        nextTurn(); 
+                                        return; 
+                                    } 
+                                } 
+                            piece.shape = rotateMatrix(piece.shape); 
+                        } 
+                        if (flip === 0) piece.shape = flipMatrix(piece.shape); 
+                    }
+                    piece.shape = originalShape; 
+                }
                 saveState(); passedPlayers[currentPlayer] = true; nextTurn();
             }
             
