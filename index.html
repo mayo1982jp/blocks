@@ -273,6 +273,9 @@
                     return;
                 }
 
+                // プレビューを常に表示
+                piecePreviewContainer.style.display = 'grid';
+
                 const boardRect = boardContainer.getBoundingClientRect();
                 const mouseX = e.clientX;
                 const mouseY = e.clientY;
@@ -282,8 +285,7 @@
                                          mouseY >= boardRect.top && mouseY < boardRect.bottom;
 
                 if (isMouseOverBoard) {
-                    piecePreviewContainer.style.display = 'grid';
-                    // ボードの左上を基準としたマウス座標
+                    // ボード上：グリッドにスナップ
                     const relativeMouseX = mouseX - boardRect.left;
                     const relativeMouseY = mouseY - boardRect.top;
 
@@ -301,8 +303,12 @@
                     const isValid = isValidPlacement(startX, startY, selectedPieceData);
                     piecePreviewContainer.classList.toggle('invalid-placement', !isValid);
                 } else {
-                    // ボードの外ではプレビューを非表示
-                    piecePreviewContainer.style.display = 'none';
+                    // ボード外：カーソルに追従
+                    const previewX = mouseX - boardRect.left - (pieceAnchor.x * cellWidth) - (cellWidth / 2);
+                    const previewY = mouseY - boardRect.top - (pieceAnchor.y * cellHeight) - (cellHeight / 2);
+
+                    piecePreviewContainer.style.transform = `translate(${previewX}px, ${previewY}px)`;
+                    piecePreviewContainer.classList.remove('invalid-placement');
                 }
             }
 
