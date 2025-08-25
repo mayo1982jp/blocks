@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ブロックス</title>
     <style>
-        body{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;display:flex;justify-content:center;align-items:center;padding:10px;background-color:#f0f0f0;user-select:none; min-height: 10vh; margin: 0; box-sizing: border-box;}
+        body{font-family:-apple-system, BlinkMacMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;display:flex;justify-content:center;align-items:center;padding:10px;background-color:#f0f0f0;user-select:none; min-height: 10vh; margin: 0; box-sizing: border-box;}
         
         #mode-selection { display: flex; flex-direction: column; gap: 20px; padding: 40px; background-color: #fff; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); text-align: center; }
         #mode-selection h1 { margin: 0 0 10px 0; }
@@ -140,7 +140,7 @@
             <div id="piece-list"></div>
             <div class="button-area">
                 <button id="flip-button" class="action-button">反転</button>
-                <button id="rotate-button" class="action-button">回転</button>
+                <button id="rotate-button" class="action-button">回転 ⤵</button>
             </div>
             <div id="rules-container">
                 <h4 id="rules-toggle">ルール</h4>
@@ -438,7 +438,7 @@
             }
             function onPass() { const currentPlayer = PLAYER_ORDER[currentPlayerIndex]; if (gameMode === 'solo' && AI_PLAYERS.includes(currentPlayer)) return; if (!passedPlayers[currentPlayer]) { saveState(); passedPlayers[currentPlayer] = true; nextTurn(); } }
 
-            function nextTurn() { if (Object.values(passedPlayers).every(p => p)) { endGame(); return; } let nextPlayerFound = false; let sanityCheck = 0; while(!nextPlayerFound && sanityCheck < 5) { currentPlayerIndex = (currentPlayerIndex + 1) % PLAYER_ORDER.length; if (!passedPlayers[PLAYER_ORDER[currentPlayerIndex]]) { nextPlayerFound = true; } sanityCheck++; } startTurn(); }
+            function nextTurn() { if (Object.values(passedPlayers).every(p => p)) { endGame(); return; } let nextPlayerFound = false; let sanityCheck = 5; while(!nextPlayerFound && sanityCheck > 0) { currentPlayerIndex = (currentPlayerIndex + 1) % PLAYER_ORDER.length; if (!passedPlayers[PLAYER_ORDER[currentPlayerIndex]]) { nextPlayerFound = true; } sanityCheck--; } startTurn(); }
             
             function startTurn() {
                 const currentPlayer = PLAYER_ORDER[currentPlayerIndex];
