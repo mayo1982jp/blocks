@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ブロックス</title>
     <style>
-        body{font-family:-apple-system, BlinkMacMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;display:flex;justify-content:center;align-items:center;padding:10px;background-color:#f0f0f0;user-select:none; min-height: 10vh; margin: 0; box-sizing: border-box;}
+        body{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;display:flex;justify-content:center;align-items:center;padding:10px;background-color:#f0f0f0;user-select:none; min-height: 10vh; margin: 0; box-sizing: border-box;}
         
         #mode-selection { display: flex; flex-direction: column; gap: 20px; padding: 40px; background-color: #fff; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); text-align: center; }
         #mode-selection h1 { margin: 0 0 10px 0; }
@@ -127,6 +127,7 @@
         <h1>ブロックス</h1>
         <button id="solo-lvl1-btn" class="mode-button">1人で遊ぶ (レベル1)</button>
         <button id="solo-lvl2-btn" class="mode-button">1人で遊ぶ (レベル2)</button>
+        <button id="solo-lvl3-btn" class="mode-button">1人で遊ぶ (レベル3)</button>
         <button id="multiplayer-btn" class="mode-button">4人で遊ぶ</button>
     </div>
     
@@ -230,6 +231,7 @@
 
             document.getElementById('solo-lvl1-btn').addEventListener('click', () => startGame('solo', 1));
             document.getElementById('solo-lvl2-btn').addEventListener('click', () => startGame('solo', 2));
+            document.getElementById('solo-lvl3-btn').addEventListener('click', () => startGame('solo', 3)); // レベル3ボタンのイベントリスナーを追加
             document.getElementById('multiplayer-btn').addEventListener('click', () => startGame('multiplayer', 0));
             homeButton.addEventListener('click', () => location.reload());
 
@@ -508,6 +510,7 @@
             function executeAITurn() {
                 if (aiLevel === 1) executeLvl1AI();
                 else if (aiLevel === 2) executeLvl2AI();
+                else if (aiLevel === 3) executeLvl3AI(); // レベル3のAIを実行
             }
 
             function executeLvl1AI() {
@@ -571,6 +574,95 @@
                     piece.shape = originalShape; 
                 }
                 saveState(); passedPlayers[currentPlayer] = true; nextTurn();
+            }
+
+            // レベル3のAIロジック
+            function executeLvl3AI() {
+                const currentPlayer = PLAYER_ORDER[currentPlayerIndex];
+                let bestMove = null;
+                let bestScore = -Infinity; // スコアは大きければ大きいほど良い
+
+                const availablePieces = Object.values(allPlayerPieces[currentPlayer]).filter(p => !p.used);
+
+                for (const piece of availablePieces) {
+                    let originalShape = JSON.parse(JSON.stringify(piece.shape)); // 元の形状を保存
+
+                    // すべての可能な向き（回転と反転）を試す
+                    for (let flipH = 0; flipH < 2; flipH++) {
+                        for (let flipV = 0; flipV < 2; flipV++) {
+                            for (let rotation = 0; rotation < 4; rotation++) {
+                                const currentPieceShape = piece.shape; // 現在の変換後の形状
+                                const pieceArea = currentPieceShape.flat().reduce((s, c) => s + c, 0);
+
+                                for (let y = 0; y < BOARD_SIZE; y++) {
+                                    for (let x = 0; x < BOARD_SIZE; x++) {
+                                        const anchor = pieceAnchorForShape(currentPieceShape);
+                                        const startX = x - anchor.x;
+                                        const startY = y - anchor.y;
+
+                                        // 配置が有効かどうかをチェック
+                                        if (isValidPlacement(startX, startY, { ...piece, shape: currentPieceShape })) {
+                                            // この配置のスコアを計算
+                                            const distanceToCenter = calculateDistanceToCenter(currentPieceShape, startX, startY);
+                                            // スコアリング: ピースの面積を優先し、次に中心に近いほど良い
+                                            // ピースの面積に大きな重み付けをして、中心からの距離を減点する
+                                            const currentMoveScore = pieceArea * 1000 - distanceToCenter;
+
+                                            if (currentMoveScore > bestScore) {
+                                                bestScore = currentMoveScore;
+                                                bestMove = {
+                                                    piece: piece,
+                                                    shape: JSON.parse(JSON.stringify(currentPieceShape)), // 特定の形状を保存
+                                                    startX: startX,
+                                                    startY: startY
+                                                };
+                                            }
+                                        }
+                                    }
+                                }
+                                piece.shape = rotateMatrix(piece.shape); // 次の回転のためにピースを回転
+                            }
+                            if (flipV === 0) piece.shape = flipMatrixVertical(piece.shape); // 次の垂直反転のためにピースを反転
+                        }
+                        if (flipH === 0) piece.shape = flipMatrixHorizontal(piece.shape); // 次の水平反転のためにピースを反転
+                    }
+                    piece.shape = originalShape; // 次のピースのために元の形状に戻す
+                }
+
+                if (bestMove) {
+                    saveState();
+                    bestMove.piece.shape = bestMove.shape; // 最適な形状を実際のピースオブジェクトに適用
+                    placePieceOnBoard(bestMove.startX, bestMove.startY, bestMove.piece);
+                    bestMove.piece.used = true;
+                    isFirstTurn[bestMove.piece.color] = false;
+                    nextTurn();
+                } else {
+                    // 有効な手が見つからなかった場合はパス
+                    saveState();
+                    passedPlayers[currentPlayer] = true;
+                    nextTurn();
+                }
+            }
+
+            // ピースの中心からボードの中心までの平均距離を計算するヘルパー関数
+            function calculateDistanceToCenter(pieceShape, startX, startY) {
+                const boardCenterX = (BOARD_SIZE - 1) / 2; // 20x20ボードの場合、中心は9.5
+                const boardCenterY = (BOARD_SIZE - 1) / 2;
+                let totalDistance = 0;
+                let cellCount = 0;
+
+                for (let y = 0; y < pieceShape.length; y++) {
+                    for (let x = 0; x < pieceShape[y].length; x++) {
+                        if (pieceShape[y][x] === 1) {
+                            const gridX = startX + x;
+                            const gridY = startY + y;
+                            totalDistance += Math.abs(gridX - boardCenterX) + Math.abs(gridY - boardCenterY);
+                            cellCount++;
+                        }
+                    }
+                }
+                // ピース内の各セルについて、中心からの平均距離を返す
+                return cellCount > 0 ? totalDistance / cellCount : 0;
             }
             
             function clearHighlights() { document.querySelectorAll('.valid-move-highlight').forEach(c => c.classList.remove('valid-move-highlight')); }
